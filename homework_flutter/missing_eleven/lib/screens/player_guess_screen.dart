@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../main.dart';
 import '../models/player.dart';
 
 class PlayerGuessScreen extends StatefulWidget {
@@ -16,7 +18,9 @@ class PlayerGuessScreen extends StatefulWidget {
 }
 
 class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
-  String currentGuess = '';
+  late PlayerProgress progress;
+  late String currentGuess;
+  late int attempts;
   bool revealed = false;
   List<String> previousGuesses = [];
   
@@ -33,6 +37,11 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
   @override
   void initState() {
     super.initState();
+    // Read initial progress from the provider
+    progress = Provider.of<GameState>(context, listen: false)
+      .getProgress(widget.player.name);
+    currentGuess = '';
+    attempts = widget.attempts; // Initialize with the passed value
     // Initialize letter statuses for all alphabet
     for (var row in keyboardLayout) {
       for (var letter in row) {
@@ -41,26 +50,162 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
     }
   }
 
+  void _updateGuess(String letter) {
+    // Find where we are in the current guess process
+    int currentPos = currentGuess.length;
+    String playerName = widget.player.name;
+    
+    // If we reach a space in the player name, automatically add it
+    if (currentPos < playerName.length && playerName[currentPos] == ' ') {
+      setState(() {
+        currentGuess += ' ' + letter;
+      });
+    } 
+    // If we reach a hyphen in the player name, automatically add it
+    else if (currentPos < playerName.length && playerName[currentPos] == '-') {
+      setState(() {
+        currentGuess += '-' + letter;
+      });
+    }
+    // Otherwise just add the letter
+    else {
+      setState(() {
+        currentGuess += letter;
+      });
+    }
+  }
+
+  void _handleKeyPress(String letter) {
+    if (letter == 'ENTER') {
+      _checkGuess();
+    } else if (letter == 'BACKSPACE') {
+      if (currentGuess.isNotEmpty) {
+        setState(() {
+          currentGuess = currentGuess.substring(0, currentGuess.length - 1);
+        });
+      }
+    } else {
+      _updateGuess(letter);
+    }
+  }
+
+  // Normalize text by removing accents and special characters
+  String _normalizeText(String text) {
+    // Map of accented characters to their non-accented equivalents
+    const Map<String, String> accentMap = {
+      'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ý': 'y', 'ÿ': 'y',
+      'ç': 'c', 'ñ': 'n', 'ß': 'ss',
+      'Á': 'A', 'À': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A',
+      'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+      'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
+      'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Õ': 'O', 'Ö': 'O', 'Ø': 'O',
+      'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+      'Ý': 'Y',
+      'Ç': 'C', 'Ñ': 'N',
+    };
+
+    String normalized = text;
+    accentMap.forEach((accented, nonAccented) {
+      normalized = normalized.replaceAll(accented, nonAccented);
+    });
+    
+    return normalized;
+  }
+
+  void _checkGuess() {
+    if (currentGuess.isEmpty) return;
+    
+    // Store the current guess
+    final guess = currentGuess;
+    setState(() {
+      progress.previousGuesses.add(guess);
+      currentGuess = '';
+    });
+    
+    progress.attempts++;
+    // Update the progress in the provider
+    Provider.of<GameState>(context, listen: false)
+      .updateProgress(widget.player.name, progress);
+    
+    // Normalize and clean both the player name and guess to ignore special characters
+    String playerNameClean = _normalizeText(widget.player.name)
+        .replaceAll(' ', '')
+        .replaceAll('-', '')
+        .toLowerCase();
+    
+    String guessClean = _normalizeText(guess)
+        .replaceAll(' ', '')
+        .replaceAll('-', '')
+        .toLowerCase();
+    
+    if (guessClean == playerNameClean) {
+      // Correct guess
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Correct!'),
+          content: Text('You guessed ${widget.player.name} correctly!'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context, {'correct': true, 'attempts': progress.attempts}); // Return to field with correct result
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+    } else if (progress.attempts >= 6) {
+      // Maximum attempts reached
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Out of Attempts'),
+          content: Text('The correct player was: ${widget.player.name}'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context, {'correct': false, 'attempts': progress.attempts}); // Return to field
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E2E), // Dark purple background
+      backgroundColor: const Color(0xFF1E1E2E),
       appBar: AppBar(
         title: const Text('Missing 11'),
-        backgroundColor: const Color(0xFF1E1E2E),
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.secondary,
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () {
-              setState(() {
-                revealed = true;
-              });
+              // Return a Map with 'correct' and 'attempts'
+              Navigator.pop(context, {'correct': true, 'attempts': progress.attempts});
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.green,
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.primary,
+              foregroundColor: Colors.white,
             ),
             child: const Text('Reveal Player*'),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(
@@ -89,54 +234,73 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
                   children: [
                     // Display the revealed player
                     if (revealed)
-                      Text(
-                        widget.player.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                      Card(
+                        color: colorScheme.primaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            widget.player.name,
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
                       
                     // Show previous guesses
-                    if (!revealed && previousGuesses.isNotEmpty)
-                      Column(
-                        children: [
-                          ...previousGuesses.map((guess) => _buildGuessResult(guess)).toList(),
-                          const SizedBox(height: 16),
-                        ],
+                    if (!revealed && progress.previousGuesses.isNotEmpty)
+                      Card(
+                        color: colorScheme.surfaceVariant.withOpacity(0.7),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            children: [
+                              ...progress.previousGuesses.map((guess) => _buildGuessResult(guess)).toList(),
+                            ],
+                          ),
+                        ),
                       ),
+                    
+                    const SizedBox(height: 16),
                     
                     // Current guess interface
                     if (!revealed)
-                      Column(
-                        children: [
-                          // Show current guess
-                          if (currentGuess.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 20),
-                              child: Text(
-                                currentGuess.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
+                      Card(
+                        color: colorScheme.surfaceVariant.withOpacity(0.7),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              // Show current guess
+                              if (currentGuess.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 20),
+                                  child: Text(
+                                    currentGuess.toUpperCase(),
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          _buildGuessDisplay(),
-                        ],
-                      ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Display "Make your first guess" message
-                    if (!revealed && currentGuess.isEmpty && previousGuesses.isEmpty)
-                      const Text(
-                        'Make your first guess!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
+                              _buildGuessDisplay(),
+                              
+                              const SizedBox(height: 20),
+                              
+                              // Display "Make your first guess" message
+                              if (currentGuess.isEmpty && progress.previousGuesses.isEmpty)
+                                Text(
+                                  'Make your first guess!',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -146,55 +310,61 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
           ),
           
           // Build keyboard
-          Column(
-            children: [
-              for (var row in keyboardLayout)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var key in row)
-                      _buildKeyboardKey(key),
-                  ],
+          Container(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            color: Colors.black26,
+            child: Column(
+              children: [
+                for (var row in keyboardLayout)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var key in row)
+                          _buildKeyboardKey(key),
+                      ],
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Backspace key
+                      _buildSpecialKey(
+                        Icons.backspace_outlined,
+                        () {
+                          if (currentGuess.isNotEmpty) {
+                            setState(() {
+                              // If the last character is a space or hyphen, remove the character before it too
+                              if (currentGuess.length > 1 && 
+                                  (currentGuess[currentGuess.length - 2] == ' ' || 
+                                   currentGuess[currentGuess.length - 2] == '-')) {
+                                currentGuess = currentGuess.substring(0, currentGuess.length - 2);
+                              } else {
+                                currentGuess = currentGuess.substring(0, currentGuess.length - 1);
+                              }
+                            });
+                          }
+                        },
+                        width: 70,
+                      ),
+                      // Enter key
+                      _buildSpecialKey(
+                        null,
+                        () {
+                          _handleKeyPress('ENTER');
+                        },
+                        text: 'Enter',
+                        width: 120,
+                      ),
+                    ],
+                  ),
                 ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Backspace key
-                  _buildSpecialKey(
-                    Icons.backspace_outlined,
-                    () {
-                      if (currentGuess.isNotEmpty) {
-                        setState(() {
-                          currentGuess = currentGuess.substring(0, currentGuess.length - 1);
-                        });
-                      }
-                    },
-                  ),
-                  // Space key
-                  _buildSpecialKey(
-                    null,
-                    () {
-                      setState(() {
-                        currentGuess += ' ';
-                      });
-                    },
-                    text: 'Space',
-                    width: 100,
-                  ),
-                  // Enter key
-                  _buildSpecialKey(
-                    null,
-                    () {
-                      _checkGuess();
-                    },
-                    text: 'Enter',
-                    width: 100,
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
         ],
       ),
     );
@@ -396,50 +566,60 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
     final color = _getColorForKeyboard(status);
     
     return Padding(
-      padding: const EdgeInsets.all(4.0),
-      child: ElevatedButton(
-        onPressed: () {
-          setState(() {
-            currentGuess += letter;
-          });
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          minimumSize: const Size(35, 45),
-          padding: EdgeInsets.zero,
-        ),
-        child: Text(
-          letter,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+      padding: const EdgeInsets.all(3.0),
+      child: Material(
+        elevation: 2,
+        borderRadius: BorderRadius.circular(8),
+        color: color,
+        child: InkWell(
+          onTap: () {
+            _handleKeyPress(letter);
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 32,
+            height: 42,
+            alignment: Alignment.center,
+            child: Text(
+              letter,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSpecialKey(IconData? icon, VoidCallback onPressed, {String? text, double width = 50}) {
+  Widget _buildSpecialKey(IconData? icon, VoidCallback onPressed, {String? text, double width = 45}) {
     return Padding(
-      padding: const EdgeInsets.all(4.0),
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.grey[700],
-          minimumSize: Size(width, 45),
-          padding: EdgeInsets.zero,
+      padding: const EdgeInsets.all(3.0),
+      child: Material(
+        elevation: 2,
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.grey[700],
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: width,
+            height: 42,
+            alignment: Alignment.center,
+            child: icon != null 
+                ? Icon(icon, color: Colors.white, size: 20) 
+                : Text(
+                    text!,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
         ),
-        child: icon != null 
-            ? Icon(icon, color: Colors.white) 
-            : Text(
-                text!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
       ),
     );
   }
@@ -482,61 +662,6 @@ class _PlayerGuessScreenState extends State<PlayerGuessScreen> {
       LetterStatus.correct: 3,
     };
     return (order[newStatus] ?? 0) > (order[oldStatus] ?? 0);
-  }
-
-  void _checkGuess() {
-    if (currentGuess.isEmpty) return;
-    
-    // Store the current guess
-    final guess = currentGuess;
-    setState(() {
-      previousGuesses.add(guess);
-      currentGuess = '';
-    });
-    
-    // Check if guess is correct - ignoring spaces and hyphens
-    String playerNameClean = widget.player.name.replaceAll(' ', '').replaceAll('-', '').toLowerCase();
-    String guessClean = guess.replaceAll(' ', '').replaceAll('-', '').toLowerCase();
-    
-    if (guessClean == playerNameClean) {
-      // Correct guess
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Correct!'),
-          content: Text('You guessed ${widget.player.name} correctly!'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context, 'correct'); // Return to field with correct result
-              },
-              child: const Text('Continue'),
-            ),
-          ],
-        ),
-      );
-    } else if (previousGuesses.length >= 6) {
-      // Maximum attempts reached
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Out of Attempts'),
-          content: Text('The correct player was: ${widget.player.name}'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context, true); // Return to field
-              },
-              child: const Text('Continue'),
-            ),
-          ],
-        ),
-      );
-    }
   }
 }
 
