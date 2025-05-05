@@ -1,16 +1,18 @@
-# missing_eleven
+# Missing Eleven Game
+#### ICM 24/25 Flutter Homework
 
-A new Flutter project.
+### A football team's starting eleven wordle guesser
 
-## Getting Started
+Guess all the starting 11 players from a team in a random football game in the minimum amount of guesses possible  
 
-This project is a starting point for a Flutter application.
+<div align="center">
+  <img src="screenshots/home.png" width="24%" alt="Home Screen"/>
+  <img src="screenshots/field.png" width="24%" alt="Field View"/>
+  <img src="screenshots/guess.png" width="24%" alt="Guess Screen"/>
+  <img src="screenshots/field_guessed.png" width="24%" alt="Guess Screen"/>
+</div>
 
-A few resources to get you started if this is your first Flutter project:
+### How to run?
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Move into the `missing_eleven` directory
+```flutter run ```

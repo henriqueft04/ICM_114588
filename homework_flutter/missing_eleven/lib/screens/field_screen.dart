@@ -7,6 +7,32 @@ import '../models/team.dart';
 import '../services/game_data.dart';
 import 'player_guess_screen.dart';
 
+// Football field widget
+class FootballField extends StatelessWidget {
+  final List<Widget> children;
+  
+  const FootballField({
+    super.key,
+    this.children = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Football field background
+        CustomPaint(
+          size: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
+          painter: FootballFieldPainter(),
+        ),
+        
+        // Children positioned on top of the field
+        ...children,
+      ],
+    );
+  }
+}
+
 class FieldScreen extends StatefulWidget {
   const FieldScreen({super.key});
 
@@ -141,16 +167,8 @@ class _FieldScreenState extends State<FieldScreen> {
         tooltip: 'New Game',
         child: const Icon(Icons.refresh),
       ),
-      body: Stack(
-        children: [
-          CustomPaint(
-            size: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
-            painter: FootballFieldPainter(),
-          ),
-          
-          // Display formation with dynamic positioning
-          ..._buildFormation(),
-        ],
+      body: FootballField(
+        children: _buildFormation(),
       ),
     );
   }
